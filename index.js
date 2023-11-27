@@ -12,9 +12,9 @@ const sha256 = require('crypto-js/sha256');
 
 require('dotenv').config();
 // Create a WebSocket connection
-console.log(`process.env.HELIUS_WEBSOCKETS_URL: ${process.env.HELIUS_WEBSOCKETS_URL}`);
+// console.log(`process.env.HELIUS_WEBSOCKETS_URL: ${process.env.HELIUS_WEBSOCKETS_URL}`);
 const ws = new WebSocket(process.env.HELIUS_WEBSOCKETS_URL);
-
+const transferSizeThreshold = process.env.TRANSFER_SIZE_THRESHOLD;
 const Pool = require('pg').Pool
 const pool = new Pool({
     user: process.env.PGUSERNAME,
@@ -410,7 +410,7 @@ const insertParsedTransaction = async (messageObj) => {
                     const uiAmount = lamports / LAMPORTS_PER_SOL
                     const from = data?.transaction.message.accountKeys[instruction.accounts[0]]
                     const to = data?.transaction.message.accountKeys[instruction.accounts[1]]
-                    if (uiAmount > 999) {
+                    if (uiAmount > transferSizeThreshold) {
                       const message = `${program},${instructionType},${signature},${err},${slot},${approximateBlocktime},${fee},,,,${(new PublicKey(from)).toBase58()},${(new PublicKey(to)).toString()},,,,${uiAmount}`;
                       const encodedHash = hashMessage(message);
                       const fields = ['program', 'type', 'signature', 'err', 'blocktime', 'fee', 'source', 'destination', 'uiAmount', 'serial']
