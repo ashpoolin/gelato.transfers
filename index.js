@@ -13,7 +13,7 @@ const sha256 = require('crypto-js/sha256');
 require('dotenv').config();
 // Create a WebSocket connection
 // console.log(`process.env.HELIUS_WEBSOCKETS_URL: ${process.env.HELIUS_WEBSOCKETS_URL}`);
-const ws = new WebSocket(process.env.HELIUS_WEBSOCKETS_URL);
+let ws = new WebSocket(process.env.HELIUS_WEBSOCKETS_URL);
 const transferSizeThreshold = process.env.TRANSFER_SIZE_THRESHOLD;
 const Pool = require('pg').Pool
 const pool = new Pool({
