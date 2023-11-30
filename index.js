@@ -162,7 +162,6 @@ function getCurrentTime() {
 }
 
 const insertParsedTransaction = async (messageObj) => {
-  
     try {
         // const data = req.body[0];
         // const signature = process.argv[2]
@@ -506,9 +505,47 @@ function sendRequest(ws) {
     ws.send(JSON.stringify(request));
 }
 
+let reconnectAttempts = 0;
+const reconnectAttemptsLimit = 10;
+function reconnectWebSocket() {
+  if (reconnectAttempts < reconnectAttemptsLimit) {
+      // Logic to re-establish the WebSocket connection
+      const newWs = new WebSocket(process.env.HELIUS_WEBSOCKETS_URL);
+      // Add event handlers to the new WebSocket
+      newWs.on('open', function open() {
+          console.log(`Reconnected to WebSocket - ${reconnectAttempts} / ${reconnectAttemptsLimit}`);
+          sendRequest(newWs);  // Send a request once the WebSocket is open
+      });
+      newWs.on('message', function incoming(data) {
+          const messageStr = data.toString('utf8');
+          try {
+            const messageObj = JSON.parse(messageStr);
+            if(Number.isInteger(messageObj.result)) { // handle the case where we send the configuration message
+              console.log(`New websocket subscription: ${messageStr}`);
+            } else {
+              insertParsedTransaction(messageObj); // typical operation
+            }
+          } catch (e) {
+              console.error('Failed to parse JSON:', e);
+          }
+      });
+      newWs.on('close', function close() {
+          console.log('WebSocket is closed');
+          reconnectAttempts++;
+          reconnectWebSocket(); // Reconnect the WebSocket
+      });
+      newWs.on('error', function error(err) {
+          console.error('WebSocket error:', err);
+          reconnectAttempts++;
+          reconnectWebSocket(); // Reconnect the WebSocket
+      });
+      return newWs;
+  } else {
+      console.error(`Failed to reconnect to WebSocket after ${reconnectAttemptsLimit} attempts`);
+  }
+}
 
 // Define WebSocket event handlers
-let connectionAttemptCount = 0;
 ws.on('open', function open() {
     console.log('WebSocket is open');
     sendRequest(ws);  // Send a request once the WebSocket is open
@@ -517,8 +554,12 @@ ws.on('open', function open() {
 ws.on('message', function incoming(data) {
     const messageStr = data.toString('utf8');
     try {
-        const messageObj = JSON.parse(messageStr);
-        insertParsedTransaction(messageObj);
+      const messageObj = JSON.parse(messageStr);
+      if(Number.isInteger(messageObj.result)) { // handle the case where we send the configuration message
+        console.log(`New websocket established: ${messageStr}`);
+      } else {
+        insertParsedTransaction(messageObj); // typical operation
+      }
     } catch (e) {
         console.error('Failed to parse JSON:', e);
     }
@@ -526,35 +567,9 @@ ws.on('message', function incoming(data) {
 
 ws.on('error', function error(err) {
     console.error('WebSocket error:', err);
-    connectionAttemptCount++;
-    if (connectionAttemptCount < 5) {
-        console.log('Attempting to reconnect to WebSocket');
-        ws = reconnectWebSocket(); // Reconnect the WebSocket
-    } else {
-        console.error('Failed to reconnect to WebSocket after 5 attempts');
-    }
+    console.log('Attempting to reconnect to WebSocket');
+    ws = reconnectWebSocket(); // Reconnect the WebSocket
 });
-
-// Define a function to reconnect the WebSocket
-function reconnectWebSocket() {
-    // Logic to re-establish the WebSocket connection
-    const newWs = new WebSocket(process.env.HELIUS_WEBSOCKETS_URL);
-    // Add event handlers to the new WebSocket
-    newWs.on('open', function open() {
-        console.log('Reconnected to WebSocket');
-        sendRequest(newWs);  // Send a request once the WebSocket is open
-    });
-    newWs.on('message', function incoming(data) {
-      const messageStr = data.toString('utf8');
-      try {
-          const messageObj = JSON.parse(messageStr);
-          insertParsedTransaction(messageObj);
-      } catch (e) {
-          console.error('Failed to parse JSON:', e);
-      }
-    });
-    return newWs;
-}
 
 // Add the reconnect logic to the 'close' event handler
 ws.on('close', function close() {
