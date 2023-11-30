@@ -544,8 +544,15 @@ function reconnectWebSocket() {
         console.log('Reconnected to WebSocket');
         sendRequest(newWs);  // Send a request once the WebSocket is open
     });
-    // Add other event handlers as needed
-    // ...
+    newWs.on('message', function incoming(data) {
+      const messageStr = data.toString('utf8');
+      try {
+          const messageObj = JSON.parse(messageStr);
+          insertParsedTransaction(messageObj);
+      } catch (e) {
+          console.error('Failed to parse JSON:', e);
+      }
+    });
     return newWs;
 }
 
