@@ -13,7 +13,7 @@ const sha256 = require('crypto-js/sha256');
 require('dotenv').config();
 // Create a WebSocket connection
 // console.log(`process.env.HELIUS_WEBSOCKETS_URL: ${process.env.HELIUS_WEBSOCKETS_URL}`);
-let ws = new WebSocket(process.env.HELIUS_WEBSOCKETS_URL);
+// let ws = new WebSocket(process.env.HELIUS_WEBSOCKETS_URL);
 const transferSizeThreshold = process.env.TRANSFER_SIZE_THRESHOLD;
 const Pool = require('pg').Pool
 const pool = new Pool({
@@ -505,45 +505,101 @@ function sendRequest(ws) {
     ws.send(JSON.stringify(request));
 }
 
+// let reconnectAttempts = 0;
+// const reconnectAttemptsLimit = 10;
+// function reconnectWebSocket() {
+//   if (reconnectAttempts < reconnectAttemptsLimit) {
+//       // Logic to re-establish the WebSocket connection
+//       const newWs = new WebSocket(process.env.HELIUS_WEBSOCKETS_URL);
+//       // Add event handlers to the new WebSocket
+//       newWs.on('open', function open() {
+//           console.log(`Reconnected to WebSocket - ${reconnectAttempts} / ${reconnectAttemptsLimit}`);
+//           sendRequest(newWs);  // Send a request once the WebSocket is open
+//       });
+//       newWs.on('message', function incoming(data) {
+//           const messageStr = data.toString('utf8');
+//           try {
+//             const messageObj = JSON.parse(messageStr);
+//             if(Number.isInteger(messageObj.result)) { // handle the case where we send the configuration message
+//               console.log(`New websocket subscription: ${messageStr}`);
+//             } else {
+//               insertParsedTransaction(messageObj); // typical operation
+//             }
+//           } catch (e) {
+//               console.error('Failed to parse JSON:', e);
+//           }
+//       });
+//       newWs.on('close', function close() {
+//           console.log('WebSocket is closed');
+//           reconnectAttempts++;
+//           reconnectWebSocket(); // Reconnect the WebSocket
+//       });
+//       newWs.on('error', function error(err) {
+//           console.error('WebSocket error:', err);
+//           reconnectAttempts++;
+//           reconnectWebSocket(); // Reconnect the WebSocket
+//       });
+//       return newWs;
+//   } else {
+//       console.error(`Failed to reconnect to WebSocket after ${reconnectAttemptsLimit} attempts`);
+//   }
+// }
+
+const RECONNECT_INTERVAL = 15 * 60 * 1000; // 15 minutes in milliseconds
+const RECONNECT_ATTEMPTS_LIMIT = 10;
 let reconnectAttempts = 0;
-const reconnectAttemptsLimit = 10;
-function reconnectWebSocket() {
-  if (reconnectAttempts < reconnectAttemptsLimit) {
-      // Logic to re-establish the WebSocket connection
-      const newWs = new WebSocket(process.env.HELIUS_WEBSOCKETS_URL);
-      // Add event handlers to the new WebSocket
-      newWs.on('open', function open() {
-          console.log(`Reconnected to WebSocket - ${reconnectAttempts} / ${reconnectAttemptsLimit}`);
-          sendRequest(newWs);  // Send a request once the WebSocket is open
-      });
-      newWs.on('message', function incoming(data) {
-          const messageStr = data.toString('utf8');
-          try {
-            const messageObj = JSON.parse(messageStr);
-            if(Number.isInteger(messageObj.result)) { // handle the case where we send the configuration message
-              console.log(`New websocket subscription: ${messageStr}`);
-            } else {
-              insertParsedTransaction(messageObj); // typical operation
-            }
-          } catch (e) {
-              console.error('Failed to parse JSON:', e);
-          }
-      });
-      newWs.on('close', function close() {
-          console.log('WebSocket is closed');
-          reconnectAttempts++;
-          reconnectWebSocket(); // Reconnect the WebSocket
-      });
-      newWs.on('error', function error(err) {
-          console.error('WebSocket error:', err);
-          reconnectAttempts++;
-          reconnectWebSocket(); // Reconnect the WebSocket
-      });
-      return newWs;
+
+function setupWebSocket() {
+  let ws = new WebSocket(process.env.HELIUS_WEBSOCKETS_URL);
+
+  ws.on('open', function open() {
+    console.log('WebSocket is open');
+    reconnectAttempts = 0; // Reset attempts on successful connection
+    sendRequest(ws);
+  });
+
+  ws.on('message', function incoming(data) {
+    // ... existing message handling code ...
+  });
+
+  ws.on('error', function error(err) {
+    console.error('WebSocket error:', err);
+    attemptReconnect();
+  });
+
+  ws.on('close', function close() {
+    console.log('WebSocket is closed');
+    attemptReconnect();
+  });
+
+  return ws;
+}
+
+function attemptReconnect() {
+  if (reconnectAttempts < RECONNECT_ATTEMPTS_LIMIT) {
+    reconnectAttempts++;
+    console.log(`Attempting to reconnect (${reconnectAttempts}/${RECONNECT_ATTEMPTS_LIMIT})...`);
+    setTimeout(() => {
+      ws = setupWebSocket();
+    }, 1000 * reconnectAttempts); // Exponential backoff
   } else {
-      console.error(`Failed to reconnect to WebSocket after ${reconnectAttemptsLimit} attempts`);
+    console.error(`Failed to reconnect after ${RECONNECT_ATTEMPTS_LIMIT} attempts`);
   }
 }
+
+function reconnectWebSocket() {
+  console.log('Periodic reconnection: Reconnecting WebSocket...');
+  reconnectAttempts = 0; // Reset attempts for periodic reconnection
+  if (ws) {
+    ws.close();
+  }
+  ws = setupWebSocket();
+}
+
+let ws = setupWebSocket();
+
+// Set up periodic reconnection
+setInterval(reconnectWebSocket, RECONNECT_INTERVAL);
 
 // Define WebSocket event handlers
 ws.on('open', function open() {
