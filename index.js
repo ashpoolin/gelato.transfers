@@ -549,6 +549,7 @@ const RECONNECT_INTERVAL = 15 * 60 * 1000; // 15 minutes in milliseconds
 const RECONNECT_ATTEMPTS_LIMIT = 10;
 let reconnectAttempts = 0;
 let ws = null;
+let reconnectTimeout = null;
 
 function setupWebSocket() {
   if (ws) {
@@ -580,20 +581,24 @@ function setupWebSocket() {
 
   ws.on('error', function error(err) {
     console.error('WebSocket error:', err);
-    attemptReconnect();
+    scheduleReconnect();
   });
 
   ws.on('close', function close() {
     console.log('WebSocket is closed');
-    attemptReconnect();
+    scheduleReconnect();
   });
 }
 
-function attemptReconnect() {
+function scheduleReconnect() {
+  if (reconnectTimeout) {
+    clearTimeout(reconnectTimeout);
+  }
+
   if (reconnectAttempts < RECONNECT_ATTEMPTS_LIMIT) {
     reconnectAttempts++;
-    console.log(`Attempting to reconnect (${reconnectAttempts}/${RECONNECT_ATTEMPTS_LIMIT})...`);
-    setTimeout(setupWebSocket, 1000 * reconnectAttempts); // Exponential backoff
+    console.log(`Scheduling reconnect attempt (${reconnectAttempts}/${RECONNECT_ATTEMPTS_LIMIT})...`);
+    reconnectTimeout = setTimeout(setupWebSocket, 1000 * reconnectAttempts); // Exponential backoff
   } else {
     console.error(`Failed to reconnect after ${RECONNECT_ATTEMPTS_LIMIT} attempts`);
   }
@@ -606,13 +611,11 @@ setupWebSocket();
 setInterval(() => {
   console.log('Periodic reconnection: Reconnecting WebSocket...');
   reconnectAttempts = 0; // Reset attempts for periodic reconnection
+  if (reconnectTimeout) {
+    clearTimeout(reconnectTimeout);
+  }
   setupWebSocket();
 }, RECONNECT_INTERVAL);
-// Define WebSocket event handlers
-ws.on('open', function open() {
-    console.log('WebSocket is open');
-    sendRequest(ws);  // Send a request once the WebSocket is open
-});
 
 ws.on('message', function incoming(data) {
     const messageStr = data.toString('utf8');
