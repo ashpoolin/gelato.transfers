@@ -548,9 +548,14 @@ function sendRequest(ws) {
 const RECONNECT_INTERVAL = 15 * 60 * 1000; // 15 minutes in milliseconds
 const RECONNECT_ATTEMPTS_LIMIT = 10;
 let reconnectAttempts = 0;
+let ws = null;
 
 function setupWebSocket() {
-  let ws = new WebSocket(process.env.HELIUS_WEBSOCKETS_URL);
+  if (ws) {
+    ws.close();
+  }
+
+  ws = new WebSocket(process.env.HELIUS_WEBSOCKETS_URL);
 
   ws.on('open', function open() {
     console.log('WebSocket is open');
@@ -559,7 +564,17 @@ function setupWebSocket() {
   });
 
   ws.on('message', function incoming(data) {
-    // ... existing message handling code ...
+    const messageStr = data.toString('utf8');
+    try {
+      const messageObj = JSON.parse(messageStr);
+      if(Number.isInteger(messageObj.result)) {
+        console.log(`New websocket established: ${messageStr}`);
+      } else {
+        insertParsedTransaction(messageObj);
+      }
+    } catch (e) {
+      console.error('Failed to parse JSON:', e);
+    }
   });
 
   ws.on('error', function error(err) {
@@ -571,17 +586,13 @@ function setupWebSocket() {
     console.log('WebSocket is closed');
     attemptReconnect();
   });
-
-  return ws;
 }
 
 function attemptReconnect() {
   if (reconnectAttempts < RECONNECT_ATTEMPTS_LIMIT) {
     reconnectAttempts++;
     console.log(`Attempting to reconnect (${reconnectAttempts}/${RECONNECT_ATTEMPTS_LIMIT})...`);
-    setTimeout(() => {
-      ws = setupWebSocket();
-    }, 1000 * reconnectAttempts); // Exponential backoff
+    setTimeout(setupWebSocket, 1000 * reconnectAttempts); // Exponential backoff
   } else {
     console.error(`Failed to reconnect after ${RECONNECT_ATTEMPTS_LIMIT} attempts`);
   }
@@ -590,13 +601,11 @@ function attemptReconnect() {
 function reconnectWebSocket() {
   console.log('Periodic reconnection: Reconnecting WebSocket...');
   reconnectAttempts = 0; // Reset attempts for periodic reconnection
-  if (ws) {
-    ws.close();
-  }
-  ws = setupWebSocket();
+  setupWebSocket();
 }
 
-let ws = setupWebSocket();
+// Initial setup
+setupWebSocket();
 
 // Set up periodic reconnection
 setInterval(reconnectWebSocket, RECONNECT_INTERVAL);
