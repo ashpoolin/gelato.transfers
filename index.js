@@ -552,6 +552,7 @@ let ws = null;
 
 function setupWebSocket() {
   if (ws) {
+    ws.removeAllListeners();
     ws.close();
   }
 
@@ -568,7 +569,7 @@ function setupWebSocket() {
     try {
       const messageObj = JSON.parse(messageStr);
       if(Number.isInteger(messageObj.result)) {
-        console.log(`New websocket established: ${messageStr}`);
+        console.log(`New websocket subscription: ${messageStr}`);
       } else {
         insertParsedTransaction(messageObj);
       }
@@ -598,18 +599,15 @@ function attemptReconnect() {
   }
 }
 
-function reconnectWebSocket() {
-  console.log('Periodic reconnection: Reconnecting WebSocket...');
-  reconnectAttempts = 0; // Reset attempts for periodic reconnection
-  setupWebSocket();
-}
-
 // Initial setup
 setupWebSocket();
 
 // Set up periodic reconnection
-setInterval(reconnectWebSocket, RECONNECT_INTERVAL);
-
+setInterval(() => {
+  console.log('Periodic reconnection: Reconnecting WebSocket...');
+  reconnectAttempts = 0; // Reset attempts for periodic reconnection
+  setupWebSocket();
+}, RECONNECT_INTERVAL);
 // Define WebSocket event handlers
 ws.on('open', function open() {
     console.log('WebSocket is open');
